@@ -12,7 +12,7 @@ FINAL_CBOM="${SOURCE_DIR}/final-cbom.json"
 mkdir -p "$OUTPUT_DIR"
 
 echo "-------------------------------------------------"
-echo "[1/3] Starting PQCA Theia: Artifact & Primitive Scan"
+echo "[1/4] Starting PQCA Theia: Artifact & Primitive Scan"
 echo "-------------------------------------------------"
 # Scans for crypto primitives (RSA, ECC, PQC) in Go, Java, Python
 # Ignoring node modules
@@ -27,7 +27,7 @@ if [ ! -f "$THEIA_OUT" ] || [ ! -s "$THEIA_OUT" ]; then
 fi
 
 echo "-------------------------------------------------"
-echo "[2/3] Starting cdxgen: Deep Dependency & CBOM Scan"
+echo "[2/4] Starting cdxgen: Deep Dependency & CBOM Scan"
 echo "-------------------------------------------------"
 # Scans JS, Node, MongoDB, and SaaS dependencies
 # 1. --include-crypto: The primary toggle for PQC/Crypto assets.
@@ -52,7 +52,7 @@ if [ ! -f "$CDXGEN_OUT" ] || [ ! -s "$CDXGEN_OUT" ]; then
 fi
 
 echo "-------------------------------------------------"
-echo "[3/3] Merging into Standardized CycloneDX CBOM"
+echo "[3/4] Merging into Standardized CycloneDX CBOM"
 echo "-------------------------------------------------"
 # Merges both files and ensures the output is CycloneDX v1.6+
 cyclonedx-cli merge \
@@ -65,10 +65,6 @@ chmod -R 777 "$OUTPUT_DIR" "$FINAL_CBOM"
 
 echo "================================================="
 echo "SUCCESS: Unified CBOM generated at $FINAL_CBOM"
-echo "================================================="
-echo " "
-echo "================================================="
-echo "Scan Summary"
 echo "================================================="
 theia_count=$(jq '.components | length' "$FINAL_CBOM" 2>/dev/null || echo 0)
 echo "theia components: $theia_count"
