@@ -24,6 +24,7 @@ if [ ! -f "$THEIA_OUT" ] || [ ! -s "$THEIA_OUT" ]; then
     echo "Warning: Theia scan produced no output"
     echo "{}" > "$THEIA_OUT" 
     # Create an empty JSON
+fi
 
 echo "-------------------------------------------------"
 echo "[2/3] Starting cdxgen: Deep Dependency & CBOM Scan"
@@ -48,7 +49,7 @@ if [ ! -f "$CDXGEN_OUT" ] || [ ! -s "$CDXGEN_OUT" ]; then
     echo "Warning: cdxgen scan produced no output"
     echo "{}" > "$CDXGEN_OUT" 
     # Create an empty JSON
-
+fi
 
 echo "-------------------------------------------------"
 echo "[3/3] Merging into Standardized CycloneDX CBOM"
@@ -63,11 +64,33 @@ cyclonedx-cli merge \
 chmod -R 777 "$OUTPUT_DIR" "$FINAL_CBOM"
 
 echo "================================================="
-echo "SUCCESS: Unified CBOM generated at ${FINAL_CBOM}"
+echo "SUCCESS: Unified CBOM generated at $FINAL_CBOM"
 echo "================================================="
 echo " "
 echo "================================================="
 echo "Scan Summary"
 echo "================================================="
-echo "theia components: ${jq '.components | length' "$FINAL_CBOM" 2>/dev/null || echo 0}"
+theia_count=$(jq '.components | length' "$FINAL_CBOM" 2>/dev/null || echo 0)
+echo "theia components: $theia_count"
 echo "================================================="
+
+## Run grype silently and capture output/logs (no streaming to terminal)
+grype "sbom:$FINAL_CBOM" -o json > "$OUTPUT_DIR/vulnerabilities_raw.json" 2> "$OUTPUT_DIR/grype.stderr.log"
+grype_status=$?
+
+if [ $grype_status -ne 0 ]; then
+    echo "Warning: grype exited with code $grype_status (see $OUTPUT_DIR/grype.stderr.log)"
+fi
+
+# Pretty-print JSON if possible, otherwise provide a safe fallback
+if command -v jq >/dev/null 2>&1; then
+    if jq . "$OUTPUT_DIR/vulnerabilities_raw.json" > "$OUTPUT_DIR/vulnerabilities.json" 2>/dev/null; then
+        rm -f "$OUTPUT_DIR/vulnerabilities_raw.json"
+    else
+        echo "Warning: grype output not valid JSON; writing empty JSON object"
+        echo "{}" > "$OUTPUT_DIR/vulnerabilities.json"
+    fi
+else
+    echo "Warning: jq not found; saving raw grype output (see $OUTPUT_DIR/grype.stderr.log for errors)"
+    mv "$OUTPUT_DIR/vulnerabilities_raw.json" "$OUTPUT_DIR/vulnerabilities.json"
+fi
