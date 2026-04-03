@@ -1,5 +1,5 @@
 # Use a multi-stage build to keep the scanner image lean
-FROM golang:1.25-bookworm AS builder
+FROM golang:1.26-bookworm AS builder
 
 # Install PQCA CBOM-Kit / Theia
 RUN go install github.com/cbomkit/cbomkit-theia@latest
@@ -19,13 +19,13 @@ RUN groupadd -r pqcuser && useradd -r -g pqcuser -m pqcuser
 RUN apt-get update && apt-get install -y \
     python3 python3-pip \
     openjdk-25-jre-headless \
-    curl git libmagic1 libpcap-dev jq\
+    curl git libmagic1 libpcap-dev jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Install node for running JS scanners
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs
-
+    
 # Install cdxgen (The polyglot scanner for JS, Java, and MongoDB/SaaS)
 RUN npm install -g @cyclonedx/cdxgen
 

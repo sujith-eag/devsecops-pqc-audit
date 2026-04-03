@@ -20,6 +20,11 @@ echo "-------------------------------------------------"
 # We redirect STDOUT to file. 
 pqc-theia dir "$SOURCE_DIR" --ignore "node_modules/**" > "$THEIA_OUT"
 
+if [ ! -f "$THEIA_OUT" ] || [ ! -s "$THEIA_OUT" ]; then
+    echo "Warning: Theia scan produced no output"
+    echo "{}" > "$THEIA_OUT" 
+    # Create an empty JSON
+
 echo "-------------------------------------------------"
 echo "[2/3] Starting cdxgen: Deep Dependency & CBOM Scan"
 echo "-------------------------------------------------"
@@ -27,8 +32,8 @@ echo "-------------------------------------------------"
 # 1. --include-crypto: The primary toggle for PQC/Crypto assets.
 # 2. --deep: Ensures it looks past the top-level package.json.
 # 3. --evidence: Collects the proof needed for an Audit-ready CBOM.
+# can add "--type js" for just JS scan "--type universal" for all, or remove --type for auto detection
 cdxgen "$SOURCE_DIR" --output "$CDXGEN_OUT" \
-    --type js \
     --no-babel \
     --required-only \
     --include-crypto \
@@ -38,6 +43,11 @@ cdxgen "$SOURCE_DIR" --output "$CDXGEN_OUT" \
     --spec-version 1.6
 
 #    --no-recurse
+
+if [ ! -f "$CDXGEN_OUT" ] || [ ! -s "$CDXGEN_OUT" ]; then
+    echo "Warning: cdxgen scan produced no output"
+    echo "{}" > "$CDXGEN_OUT" 
+    # Create an empty JSON
 
 
 echo "-------------------------------------------------"
@@ -54,4 +64,10 @@ chmod -R 777 "$OUTPUT_DIR" "$FINAL_CBOM"
 
 echo "================================================="
 echo "SUCCESS: Unified CBOM generated at ${FINAL_CBOM}"
+echo "================================================="
+echo " "
+echo "================================================="
+echo "Scan Summary"
+echo "================================================="
+echo "theia components: ${jq '.components | length' "$FINAL_CBOM" 2>/dev/null || echo 0}"
 echo "================================================="
