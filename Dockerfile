@@ -1,47 +1,70 @@
-# Use a multi-stage build to keep the scanner image lean
+# Stage 1 : Builder
+# Using a multi-stage build to keep the scanner image lean
 FROM golang:1.26-bookworm AS builder
 
-# Install PQCA CBOM-Kit / Theia
+# Installing PQCA CBOM-Kit Theia
 RUN go install github.com/cbomkit/cbomkit-theia@latest
 # These have full coverage only for Java, Python and Go
 
-# RUNTIME STAGE
+
+# Stage 2: RUNTIME
 FROM ubuntu:24.04
 # Prevent interactive prompts during apt-get
 ENV DEBIAN_FRONTEND=noninteractive
-# To prevent pip instal issues in 24.04
 ENV PIP_BREAK_SYSTEM_PACKAGES=1
+# To prevent pip instal issues in 24.04
+# and allow global installation
+
+
+# Pinning tool versions for reproducible builds and security
+ENV CDXGEN_VERSION=10.8.0
+ENV CYCLONEDX_CLI_VERSION=0.27.1
+ENV GRYPE_VERSION=0.74.0
+ENV GITLEAKS_VERSION=8.18.2
+ENV SEMGREP_VERSION=1.66.0
 
 # Install runtime dependencies for code analysis (Java, Python, C)
 RUN apt-get update && apt-get install -y \
     python3 python3-pip \
     openjdk-25-jre-headless \
-    curl git jq \
+    curl git jq wget tar\
     libmagic1 libpcap-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install node for running JS scanners
+# Install node for running JS scanners and cdxgen
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install cdxgen (The polyglot scanner for JS, Java, and MongoDB/SaaS)
-RUN npm install -g @cyclonedx/cdxgen
+RUN npm install -g @cyclonedx/cdxgen@${CDXGEN_VERSION}
+
+# Install Semgrep (for SAST) via pip
+RUN pip3 install semgrep==${SEMGREP_VERSION}
+
+
+# Adding Grype for Vulnerability scan from the CBOM
+# RUN curl -sSfL https://get.anchore.io/grype | sh -s -- -b /usr/local/bin
+RUN curl -sSfL https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz | tar -xz -C /usr/local/bin grype
+
+RUN curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz | tar -xz -C /usr/local/bin gitleaks
+
+
+# Install CycloneDX CLI for CBOM validation and merging
+RUN curl -Lo /usr/local/bin/cyclonedx-cli \
+    https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${CYCLONEDX_CLI_VERSION}/cyclonedx-linux-x64 \
+    && chmod +x /usr/local/bin/cyclonedx-cli
+
 
 # Copy PQCA Theia scanner binary from builder
 COPY --from=builder /go/bin/cbomkit-theia /usr/local/bin/cbomkit-theia
 # Create a symbolic link so 'pqc-theia' works as a generic command
 RUN ln -s /usr/local/bin/cbomkit-theia /usr/local/bin/pqc-theia
 
-# Install CycloneDX CLI for CBOM validation and merging
-RUN curl -Lo /usr/local/bin/cyclonedx-cli \
-    https://github.com/CycloneDX/cyclonedx-cli/releases/download/v0.27.1/cyclonedx-linux-x64 \
-    && chmod +x /usr/local/bin/cyclonedx-cli
 
-# Adding Grype for Vulnerability scan from the CBOM
-RUN curl -sSfL https://get.anchore.io/grype | sh -s -- -b /usr/local/bin
 
-# Create a non-root user 'pqcuser'
+
+# Create a non-root user 'pqcuser' for secure execution
 RUN groupadd -r pqcuser && useradd -r -g pqcuser -m pqcuser
 
 # Setup Entrypoint Script
