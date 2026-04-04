@@ -35,7 +35,7 @@ echo " Starting Full DevSecOps Pipeline Analysis       "
 echo "================================================="
 
 
-echo "[1/6] Running Secret Detection (Gitleaks)..."
+echo "[1/7] Running Secret Detection (Gitleaks)..."
 # Exit code 0 ensures the script continues even if secrets are found.
 # Outputs in standard JSON for custom reporting or SARIF for GitLab integration.
 gitleaks detect --source "$SOURCE_DIR" \
@@ -46,21 +46,56 @@ gitleaks detect --source "$SOURCE_DIR" \
 # Pretty-print gitleaks output
 pretty_print_json "$OUTPUT_DIR/gl-secret-detection-report.json"
 
+
+
 echo "-------------------------------------------------"
-echo "[2/6] Running SAST (Semgrep)..."
+echo "[2/7] Running SAST (Semgrep)..."
 echo "-------------------------------------------------"
 # Uses Semgrep's native GitLab SAST format which GitLab CI ingests seamlessly.
 semgrep scan --config auto \
     --gitlab-sast > "$OUTPUT_DIR/gl-sast-report.json" || true
 
-# Pretty-print semgrep output for readability
+# Pretty-print semgrep output for readability (artifact in Gitlab can show security dashboard)
 pretty_print_json "$OUTPUT_DIR/gl-sast-report.json"
 
 
 
 echo "-------------------------------------------------"
-echo "[3/6] Starting PQCA Theia: Artifact & Primitive Scan"
+echo "[3/7] Starting Language Profiling & Hyperion AST Scan"
 echo "-------------------------------------------------"
+# Initialize logic flags
+HAS_HYPERION_TARGET=false
+
+# Check if Java or Python files exist anywhere in the source directory (ignoring dependency folders)
+if find "$SOURCE_DIR" \
+    -type d \( -name "node_modules" -o -name "venv" -o -name ".m2" -o -name ".git" \) -prune \
+    -o -type f \( -name "*.java" -o -name "*.py" \) -print | grep -q .; then
+    HAS_HYPERION_TARGET=true
+fi
+
+HYPERION_OUT="${OUTPUT_DIR}/hyperion-cbom.json"
+
+if [ "$HAS_HYPERION_TARGET" = true ]; then
+    echo "  -> Java/Python detected. Running cbomkit-lib (Hyperion)..."
+    # Run Hyperion, explicitly ignoring dependency directories to prevent SCA overlap
+    cbomkit-lib scan "$SOURCE_DIR" \
+        --ignore "node_modules/**" \
+        --ignore "venv/**" \
+        --ignore ".m2/**" \
+        --output "$HYPERION_OUT" 2>/dev/null || true
+    
+    pretty_print_json "$HYPERION_OUT"
+else
+    echo "  -> No Java/Python found. Skipping Hyperion AST scan."
+fi
+
+
+echo "-------------------------------------------------"
+echo "[4/7] Starting Theia (Primitives) & cdxgen (Deep SCA)"
+echo "-------------------------------------------------"
+
+echo "  -> Running PQCA Theia (Generic Primitives)..."
+
 # Scans for crypto primitives (RSA, ECC, PQC) in Go, Java, Python
 # Using 'theia' to find hardcoded keys and crypto-calls in source
 # Ignoring node modules, redirect STDOUT to file. 
@@ -76,8 +111,10 @@ pretty_print_json "$THEIA_OUT"
 
 
 echo "-------------------------------------------------"
-echo "[4/6] Starting cdxgen: Deep Dependency & CBOM Scan for Evidence"
+echo "[5/7] Starting cdxgen: Deep Dependency & CBOM Scan for Evidence"
 echo "-------------------------------------------------"
+
+echo "  -> Running cdxgen (Full Dependency & Evidence Mapping)..."
 # Scans JS, Node, MongoDB, and SaaS dependencies
 # 1. --include-crypto: The primary toggle for PQC/Crypto assets.
 # 2. --deep: Ensures it looks past the top-level package.json.
@@ -104,13 +141,31 @@ fi
 pretty_print_json "$CDXGEN_OUT"
 
 echo "-------------------------------------------------"
-echo "[5/6] Merging into Standardized CycloneDX CBOM"
+echo "[6/7] Merging into Standardized CycloneDX CBOM"
 echo "-------------------------------------------------"
-# Merges both files and ensures the output is CycloneDX v1.6+
-cyclonedx-cli merge \
-    --input-files "$THEIA_OUT" "$CDXGEN_OUT" \
+
+# Dynamically build the merge arguments array
+# We only include the Hyperion JSON if it was generated
+
+MERGE_INPUTS=("$THEIA_OUT" "$CDXGEN_OUT")
+
+if [ -f "$HYPERION_OUT" ] && [ -s "$HYPERION_OUT" ]; then
+    # Check if the generated hyperion file is valid JSON before appending
+    if jq -e . "$HYPERION_OUT" >/dev/null 2>&1; then
+        MERGE_INPUTS+=("$HYPERION_OUT")
+        echo "  -> Including Hyperion AST data in the merge."
+    fi
+fi
+
+# Merges all provided files and ensures the output is CycloneDX v1.6+
+if [ ${#MERGE_INPUTS[@]} -gt 0 ]; then
+    cyclonedx-cli merge \
+    --input-files "${MERGE_INPUTS[@]}" \
     --output-file "$FINAL_CBOM" \
     --output-format json
+else
+    echo "  -> No merge input files found; skipping CBOM merge."
+fi
 
 
 if [ -f "$FINAL_CBOM" ]; then
@@ -151,7 +206,7 @@ except Exception:
 
 
     echo "-------------------------------------------------"
-    echo "[6/6] Vulnerability Scanning with Grype"
+    echo "[7/7] Vulnerability Scanning with Grype"
     echo "-------------------------------------------------"
     # Run Grype on the unified CBOM
 
@@ -182,10 +237,9 @@ echo "================================================="
 echo " Pipeline Analysis Complete. Reports generated in $OUTPUT_DIR"
 echo "================================================="
 
-echo "[Last Step] Generating Simple Markdown Summary..."
+echo "[One Last Step] Generating Simple Markdown Summary..."
 if [ -x /usr/local/bin/generate_simple_report.sh ]; then
     /usr/local/bin/generate_simple_report.sh
 else
     echo "  -> Skipping report generator: /usr/local/bin/generate_simple_report.sh not found or not executable"
 fi
-

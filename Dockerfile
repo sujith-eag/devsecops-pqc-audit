@@ -22,6 +22,7 @@ ENV CYCLONEDX_CLI_VERSION=0.30.0
 ENV GRYPE_VERSION=0.110.0
 ENV GITLEAKS_VERSION=8.30.1
 ENV SEMGREP_VERSION=1.157.0
+ENV CBOMKIT_LIB_VERSION=1.1.0
 
 # Install runtime dependencies for code analysis (Java, Python, C)
 RUN apt-get update && apt-get install -y \
@@ -55,6 +56,18 @@ RUN curl -Lo /usr/local/bin/cyclonedx-cli \
     https://github.com/CycloneDX/cyclonedx-cli/releases/download/v${CYCLONEDX_CLI_VERSION}/cyclonedx-linux-x64 \
     && chmod +x /usr/local/bin/cyclonedx-cli
 
+
+# Install cbomkit-lib (Hyperion AST Scanner)
+# Download the standalone CLI jar from the PQCA releases
+RUN curl -Lo /usr/local/bin/cbomkit-lib.jar \
+    https://github.com/cbomkit/cbomkit-lib/releases/download/v${CBOMKIT_LIB_VERSION}/cbomkit-lib-cli.jar
+
+# Create a bash wrapper so 'cbomkit-lib' acts as a native terminal command
+RUN cat > /usr/local/bin/cbomkit-lib <<'EOF'
+#!/bin/bash
+exec java -jar /usr/local/bin/cbomkit-lib.jar "$@"
+EOF
+RUN chmod +x /usr/local/bin/cbomkit-lib
 
 # Copy PQCA Theia scanner binary from builder
 COPY --from=builder /go/bin/cbomkit-theia /usr/local/bin/cbomkit-theia
