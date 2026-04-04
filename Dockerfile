@@ -17,11 +17,11 @@ ENV PIP_BREAK_SYSTEM_PACKAGES=1
 
 
 # Pinning tool versions for reproducible builds and security
-ENV CDXGEN_VERSION=10.8.0
-ENV CYCLONEDX_CLI_VERSION=0.27.1
-ENV GRYPE_VERSION=0.74.0
-ENV GITLEAKS_VERSION=8.18.2
-ENV SEMGREP_VERSION=1.66.0
+ENV CDXGEN_VERSION=12.1.4
+ENV CYCLONEDX_CLI_VERSION=0.30.0
+ENV GRYPE_VERSION=0.110.0
+ENV GITLEAKS_VERSION=8.30.1
+ENV SEMGREP_VERSION=1.157.0
 
 # Install runtime dependencies for code analysis (Java, Python, C)
 RUN apt-get update && apt-get install -y \
@@ -61,9 +61,6 @@ COPY --from=builder /go/bin/cbomkit-theia /usr/local/bin/cbomkit-theia
 # Create a symbolic link so 'pqc-theia' works as a generic command
 RUN ln -s /usr/local/bin/cbomkit-theia /usr/local/bin/pqc-theia
 
-
-
-
 # Create a non-root user 'pqcuser' for secure execution
 RUN groupadd -r pqcuser && useradd -r -g pqcuser -m pqcuser
 
@@ -71,6 +68,11 @@ RUN groupadd -r pqcuser && useradd -r -g pqcuser -m pqcuser
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh \
     && chown pqcuser:pqcuser /usr/local/bin/entrypoint.sh
+
+# copy report generator and make executable, owned by pqcuser
+COPY generate_simple_report.sh /usr/local/bin/generate_simple_report.sh
+RUN chmod +x /usr/local/bin/generate_simple_report.sh \
+    && chown pqcuser:pqcuser /usr/local/bin/generate_simple_report.sh
 
 # Switch to non-root user
 USER pqcuser
