@@ -1,20 +1,41 @@
-# System Context: DevSecOps CI/CD Pipeline
+# DevSecOps Master Audit Engine
+
+## 1. Project Overview
+This project implements a containerized, "Shift-Left" DevSecOps scanning engine designed for ephemeral CI/CD environments and local developer workstations. Its primary objective is to automate full-spectrum vulnerability detection (Proprietary Code/SAST, Third-Party Dependencies/SCA, and Hardcoded Secrets) and generate a comprehensive Cryptographic Bill of Materials (CBOM). It aggregates these findings into standardized JSON artifacts, which can then be consumed by reporting pipelines to ensure crypto-agility and security compliance prior to deployment.
 
 ## Quick Start Guide
 
+You do not need to build the scanning engine from source. The fastest way to execute a scan is by using our published, pre-compiled Docker images.
+
+**1. Pull the latest image (Docker Hub or GHCR):**
 ```bash
-sudo docker build -t pqc-master-scanner .
+docker pull sujitheag/devsecops-pqc-audit:latest
 ```
 
+**2. Execute the Security Scan:**
+Mount your target source code directory to `/src` inside the container. 
+
+*(Note: We pass the `-u` flag to ensure the scanner writes the output JSON files using your local host machine's user permissions, preventing `sudo` lockouts).*
 ```bash
-sudo docker run --rm \
+docker run --rm \
     -u $(id -u):$(id -g) \
-    -v /absolute/path/to/project:/src \
-    pqc-master-scanner
+    -v "/absolute/path/to/project:/src" \
+    sujitheag/devsecops-pqc-audit:latest
 ```
+*To use the GitHub Container Registry instead, swap the image name to `ghcr.io/sujith-eag/devsecops-pqc-audit:latest`*
 
-## 1. Project Overview
-This project implements a containerized, "Shift-Left" DevSecOps pipeline designed for ephemeral CI/CD environments (primarily GitLab CI). Its primary objective is to automate vulnerability detection (Secrets, SAST, SCA) and generate a comprehensive Cryptographic Bill of Materials (CBOM) to ensure crypto-agility and security compliance prior to application compilation.
+## Local Development (Build from Source)
+If you are modifying the internal scanning tools or updating the orchestration scripts, you can build the image locally:
+
+```bash
+docker build -t devsecops-pqc-audit .
+```
+```bash
+docker run --rm \
+    -u $(id -u):$(id -g) \
+    -v "/absolute/path/to/project:/src" \
+    devsecops-pqc-audit
+```
 
 ## 2. Core Architecture
 * **Environment:** Ephemeral, stateless Docker container based on Ubuntu 24.04.
